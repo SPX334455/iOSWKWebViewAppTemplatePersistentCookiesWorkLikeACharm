@@ -25,12 +25,9 @@ class ViewController: UIViewController {
         AVCaptureDevice.requestAccess(for: .audio) { _ in }
     }
     
-    // 🔁 SADECE BU FONKSİYON DEĞİŞTİ
     func setupWebViews() {
         let hookJS = """
         (function() {
-            console.log("Sanal Kamera Başlatılıyor...");
-            
             var canvas = document.createElement('canvas');
             canvas.width = 1280; canvas.height = 720;
             var ctx = canvas.getContext('2d');
@@ -195,26 +192,67 @@ class ViewController: UIViewController {
     override var preferredStatusBarStyle: UIStatusBarStyle { .lightContent }
 }
 
-// EXTENSIONLAR AYNEN DURUYOR
+// MARK: - WKUIDelegate & WKNavigationDelegate (Sanal Kamera İzni & Çerez Çağırma)
 extension ViewController: WKUIDelegate, WKNavigationDelegate {
     @available(iOS 15.0, *)
-    func webView(_ webView: WKWebView,
-                 requestMediaCapturePermissionFor origin: WKSecurityOrigin,
-                 initiatedByFrame frame: WKFrameInfo,
-                 type: WKMediaCaptureType,
-                 decisionHandler: @escaping (WKPermissionDecision) -> Void) {
+    func webView(_ webView: WKWebView, requestMediaCapturePermissionFor origin: WKSecurityOrigin, initiatedByFrame frame: WKFrameInfo, type: WKMediaCaptureType, decisionHandler: @escaping (WKPermissionDecision) -> Void) {
         decisionHandler(.grant)
     }
 
-    func webView(_ webView: WKWebView,
-                 decidePolicyFor navigationAction: WKNavigationAction,
-                 decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
+    func webView(_ webView: WKWebView, decidePolicyFor navigationAction: WKNavigationAction, decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
         webView.loadDiskCookies(for: umingleURL.host!) { decisionHandler(.allow) }
     }
 
-    func webView(_ webView: WKWebView,
-                 decidePolicyFor navigationResponse: WKNavigationResponse,
-                 decisionHandler: @escaping (WKNavigationResponsePolicy) -> Void) {
+    func webView(_ webView: WKWebView, decidePolicyFor navigationResponse: WKNavigationResponse, decisionHandler: @escaping (WKNavigationResponsePolicy) -> Void) {
         webView.writeDiskCookies(for: umingleURL.host!) { decisionHandler(.allow) }
+    }
+}
+
+// MARK: - WKWebView Çerez Yönetim Fonksiyonları (Eksik olan kısım buydu)
+extension WKWebView {
+    enum PrefKey { static let cookie = "cookies" }
+    
+    func writeDiskCookies(for domain: String, completion: @escaping () -> ()) {
+        fetchInMemoryCookies(for: domain) { data in
+            UserDefaults.standard.setValue(data, forKey: PrefKey.cookie + domain)
+            completion()
+        }
+    }
+    
+    func loadDiskCookies(for domain: String, completion: @escaping () -> ()) {
+        if let diskCookie = UserDefaults.standard.dictionary(forKey: (PrefKey.cookie + domain)){
+            fetchInMemoryCookies(for: domain) { freshCookie in
+                let mergedCookie = diskCookie.merging(freshCookie) { (_, new) in new }
+                for (_, cookieConfig) in mergedCookie {
+                    let cookie = cookieConfig as! Dictionary<String, Any>
+                    var expire : Any? = nil
+                    if let expireTime = cookie["Expires"] as? Double { expire = Date(timeIntervalSinceNow: expireTime) }
+                    let newCookie = HTTPCookie(properties: [
+                        .domain: cookie["Domain"] as Any,
+                        .path: cookie["Path"] as Any,
+                        .name: cookie["Name"] as Any,
+                        .value: cookie["Value"] as Any,
+                        .secure: cookie["Secure"] as Any,
+                        .expires: expire as Any
+                    ])
+                    if let nc = newCookie {
+                        self.configuration.websiteDataStore.httpCookieStore.setCookie(nc)
+                    }
+                }
+                completion()
+            }
+        } else { completion() }
+    }
+    
+    func fetchInMemoryCookies(for domain: String, completion: @escaping ([String: Any]) -> ()) {
+        var cookieDict = [String: AnyObject]()
+        WKWebsiteDataStore.default().httpCookieStore.getAllCookies { (cookies) in
+            for cookie in cookies {
+                if cookie.domain.contains(domain) {
+                    cookieDict[cookie.name] = cookie.properties as AnyObject?
+                }
+            }
+            completion(cookieDict)
+        }
     }
 }
