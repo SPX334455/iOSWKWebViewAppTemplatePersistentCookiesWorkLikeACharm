@@ -8,17 +8,17 @@ class ViewController: UIViewController {
     private var preziView: WKWebView! // Gizli ekran (Prezi)
     private var timer: Timer?
     
-    // Umingle URL'i (Çerezler için sabit tutuyoruz)
+    // Umingle URL'i
     let umingleURL = URL(string: "https://umingle.com")!
 
     override func viewDidLoad() {
         super.viewDidLoad()
         
-        setupStatusbar() // Şablondaki renkli barı koruyoruz
-        setupWebViews()  // WebView'ları kuruyoruz
-        setupControls()  // İleri-Geri butonlarını ekliyoruz
+        setupStatusbar()
+        setupWebViews()
+        setupControls()
         
-        // Sanal Kamera Döngüsü: Saniyede 15 kare aktarır
+        // Sanal Kamera Döngüsü: Saniyede 15 kare
         timer = Timer.scheduledTimer(timeInterval: 0.06, target: self, selector: #selector(syncFrames), userInfo: nil, repeats: true)
     }
     
@@ -53,19 +53,19 @@ class ViewController: UIViewController {
         config.userContentController.addUserScript(script)
         config.allowsInlineMediaPlayback = true
 
-        // 2. Umingle WebView (Ana Ekran)
+        // 2. Umingle WebView
         webView = WKWebView(frame: .zero, configuration: config)
         webView.translatesAutoresizingMaskIntoConstraints = false
         webView.uiDelegate = self
         webView.navigationDelegate = self
         self.view.addSubview(webView)
         
-        // 3. Prezi WebView (Arka Planda Gizli)
+        // 3. Prezi WebView (Gizli)
         preziView = WKWebView(frame: CGRect(x: 0, y: 0, width: 1280, height: 720))
-        let preziURL = URL(string: "SUNUM_LINKINI_BURAYA_YAZ")! 
+        // !!! LİNKİNİ AŞAĞIYA KOYMAYI UNUTMA !!!
+        let preziURL = URL(string: "https://prezi.com/p/wckx0wlz288z/omegle-game-includes-kinks/")! 
         preziView.load(URLRequest(url: preziURL))
 
-        // Yerleşim (Layout)
         NSLayoutConstraint.activate([
             webView.leftAnchor.constraint(equalTo: self.view.leftAnchor),
             webView.bottomAnchor.constraint(equalTo: self.view.bottomAnchor),
@@ -79,7 +79,7 @@ class ViewController: UIViewController {
     func setupStatusbar() {
         let statusBarHeight = UIApplication.shared.statusBarFrame.size.height
         let statusbarView = UIView()
-        statusbarView.backgroundColor = UIColor(red: 0.93, green: 0, blue: 1, alpha: 1) // Pembe bar
+        statusbarView.backgroundColor = UIColor(red: 0.93, green: 0, blue: 1, alpha: 1)
         view.addSubview(statusbarView)
         statusbarView.translatesAutoresizingMaskIntoConstraints = false
         NSLayoutConstraint.activate([
@@ -96,9 +96,10 @@ class ViewController: UIViewController {
         stack.spacing = 40
         stack.translatesAutoresizingMaskIntoConstraints = false
         
-        let b1 = UIButton(type: .system); b1.setTitle("⬅️", for: .normal); b1.addTarget(self, action: #selector(prev), for: .touchUpInside)
-        let b2 = UIButton(type: .system); b2.setTitle("TAM EKRAN", for: .normal); b2.addTarget(self, action: #selector(full), for: .touchUpInside)
-        let b3 = UIButton(type: .system); b3.setTitle("➡️", for: .normal); b3.addTarget(self, action: #selector(next), for: .touchUpInside)
+        // İsim çakışmasını önlemek için selector isimlerini değiştirdim:
+        let b1 = UIButton(type: .system); b1.setTitle("⬅️", for: .normal); b1.addTarget(self, action: #selector(goPrevPage), for: .touchUpInside)
+        let b2 = UIButton(type: .system); b2.setTitle("TAM EKRAN", for: .normal); b2.addTarget(self, action: #selector(goFullScreen), for: .touchUpInside)
+        let b3 = UIButton(type: .system); b3.setTitle("➡️", for: .normal); b3.addTarget(self, action: #selector(goNextPage), for: .touchUpInside)
         
         [b1, b2, b3].forEach { 
             $0.backgroundColor = .black.withAlphaComponent(0.6)
@@ -116,9 +117,10 @@ class ViewController: UIViewController {
         ])
     }
 
-    @objc func prev() { preziView.evaluateJavaScript("document.dispatchEvent(new KeyboardEvent('keydown', {keyCode: 37, which: 37}));") }
-    @objc func next() { preziView.evaluateJavaScript("document.dispatchEvent(new KeyboardEvent('keydown', {keyCode: 39, which: 39}));") }
-    @objc func full() { preziView.evaluateJavaScript("document.querySelector('.present-button')?.click();") }
+    // Fonksiyon isimlerini sistem isimleriyle çakışmasın diye değiştirdim
+    @objc func goPrevPage() { preziView.evaluateJavaScript("document.dispatchEvent(new KeyboardEvent('keydown', {keyCode: 37, which: 37}));") }
+    @objc func goNextPage() { preziView.evaluateJavaScript("document.dispatchEvent(new KeyboardEvent('keydown', {keyCode: 39, which: 39}));") }
+    @objc func goFullScreen() { preziView.evaluateJavaScript("document.querySelector('.present-button')?.click();") }
 
     @objc func syncFrames() {
         preziView.takeSnapshot(with: nil) { image, _ in
@@ -131,7 +133,7 @@ class ViewController: UIViewController {
     override var preferredStatusBarStyle : UIStatusBarStyle { return .lightContent }
 }
 
-// MARK: - Çerez Yönetimi (Şablondan gelen orijinal kod)
+// MARK: - Çerez Yönetimi
 extension ViewController: WKUIDelegate, WKNavigationDelegate {
     func webView(_ webView: WKWebView, decidePolicyFor navigationAction: WKNavigationAction, decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
         webView.loadDiskCookies(for: umingleURL.host!) { decisionHandler(.allow) }
@@ -142,34 +144,50 @@ extension ViewController: WKUIDelegate, WKNavigationDelegate {
     }
 }
 
-// Şablonun orijinal WKWebView eklentisini (Cookie yazma/okuma) buraya aynen bırakıyoruz
 extension WKWebView {
     enum PrefKey { static let cookie = "cookies" }
+    
     func writeDiskCookies(for domain: String, completion: @escaping () -> ()) {
         fetchInMemoryCookies(for: domain) { data in
             UserDefaults.standard.setValue(data, forKey: PrefKey.cookie + domain)
             completion()
         }
     }
+    
     func loadDiskCookies(for domain: String, completion: @escaping () -> ()) {
         if let diskCookie = UserDefaults.standard.dictionary(forKey: (PrefKey.cookie + domain)){
             fetchInMemoryCookies(for: domain) { freshCookie in
                 let mergedCookie = diskCookie.merging(freshCookie) { (_, new) in new }
-                for (cookieName, cookieConfig) in mergedCookie {
+                
+                // Buradaki 'cookieName' uyarısını '_' yaparak düzelttik
+                for (_, cookieConfig) in mergedCookie {
                     let cookie = cookieConfig as! Dictionary<String, Any>
                     var expire : Any? = nil
                     if let expireTime = cookie["Expires"] as? Double { expire = Date(timeIntervalSinceNow: expireTime) }
-                    let newCookie = HTTPCookie(properties: [ .domain: cookie["Domain"] as Any, .path: cookie["Path"] as Any, .name: cookie["Name"] as Any, .value: cookie["Value"] as Any, .secure: cookie["Secure"] as Any, .expires: expire as Any ])
+                    
+                    let newCookie = HTTPCookie(properties: [
+                        .domain: cookie["Domain"] as Any,
+                        .path: cookie["Path"] as Any,
+                        .name: cookie["Name"] as Any,
+                        .value: cookie["Value"] as Any,
+                        .secure: cookie["Secure"] as Any,
+                        .expires: expire as Any
+                    ])
                     self.configuration.websiteDataStore.httpCookieStore.setCookie(newCookie!)
                 }
                 completion()
             }
         } else { completion() }
     }
+    
     func fetchInMemoryCookies(for domain: String, completion: @escaping ([String: Any]) -> ()) {
         var cookieDict = [String: AnyObject]()
         WKWebsiteDataStore.default().httpCookieStore.getAllCookies { (cookies) in
-            for cookie in cookies { if cookie.domain.contains(domain) { cookieDict[cookie.name] = cookie.properties as AnyObject? } }
+            for cookie in cookies {
+                if cookie.domain.contains(domain) {
+                    cookieDict[cookie.name] = cookie.properties as AnyObject?
+                }
+            }
             completion(cookieDict)
         }
     }
