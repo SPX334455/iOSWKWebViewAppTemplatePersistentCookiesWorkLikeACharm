@@ -1,0 +1,41 @@
+name: Build Unsigned IPA
+
+on:
+  workflow_dispatch: # Manuel başlatmak için
+  push:
+    branches: [ "main" ] # Main'e her yüklemede çalışır
+
+jobs:
+  build:
+    runs-on: macos-latest
+    
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+
+    - name: Set Xcode Version
+      run: sudo xcode-select -s /Applications/Xcode_15.2.app # En stabil sürüm
+
+    - name: Build Archive
+      run: |
+        xcodebuild clean archive \
+          -project iOSWKWebViewAppTemplateCookiesWorkLikeACharm.xcodeproj \
+          -scheme iOSWKWebViewAppTemplateCookiesWorkLikeACharm \
+          -destination 'generic/platform=iOS' \
+          -archivePath build/App.xcarchive \
+          CODE_SIGNING_ALLOWED=NO \
+          CODE_SIGNING_REQUIRED=NO \
+          CODE_SIGN_IDENTITY=""
+
+    - name: Create IPA Structure
+      run: |
+        mkdir -p build/ipa/Payload
+        cp -R build/App.xcarchive/Products/Applications/*.app build/ipa/Payload/
+        cd build/ipa
+        zip -qr SmartWebView-UNSIGNED.ipa Payload
+
+    - name: Upload IPA Artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: iOS-App-IPA
+        path: build/ipa/SmartWebView-UNSIGNED.ipa
