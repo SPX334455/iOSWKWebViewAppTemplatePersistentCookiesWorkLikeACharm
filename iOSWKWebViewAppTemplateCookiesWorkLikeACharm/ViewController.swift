@@ -1,12 +1,20 @@
 import UIKit
 import WebKit
+import AVFoundation
 
 class ViewController: UIViewController {
     private var webView: WKWebView!
     private var preziView: WKWebView!
     private var timer: Timer?
     private var isPanelVisible = true
+    private var isRecording = false
     private var preziTrailingConstraint: NSLayoutConstraint!
+    
+    // Kayıt için gerekli değişkenler
+    private var assetWriter: AVAssetWriter?
+    private var videoInput: AVAssetWriterInput?
+    private var pixelBufferAdaptor: AVAssetWriterInputPixelBufferAdaptor?
+    private var startTime: CMTime?
 
     override var supportedInterfaceOrientations: UIInterfaceOrientationMask { .landscapeLeft }
     override var shouldAutorotate: Bool { false }
@@ -16,8 +24,8 @@ class ViewController: UIViewController {
         view.backgroundColor = .black
         setupWebViews()
         setupControls()
-        // Görüntü akışını saniyede 15 kareye sabitledik (Hem akıcı hem stabil)
-        timer = Timer.scheduledTimer(timeInterval: 0.06, target: self, selector: #selector(syncFrames), userInfo: nil, repeats: true)
+        
+        timer = Timer.scheduledTimer(timeInterval: 0.1, target: self, selector: #selector(mainLoop), userInfo: nil, repeats: true)
     }
 
     func setupWebViews() {
@@ -32,10 +40,20 @@ class ViewController: UIViewController {
                     ctx.clearRect(0,0,1280,720);
                     ctx.drawImage(img, 0, 0, 1280, 720); 
                 };
-                img.src = 'data:image/jpeg;base64,' + b64;
+                img.src = b64.startsWith('data') ? b64 : 'data:image/jpeg;base64,' + b64;
             };
             navigator.mediaDevices.getUserMedia = function(c) {
                 return Promise.resolve(canvas.captureStream(30));
+            };
+
+            // CİNSİYET ANALİZİ VE OTOMATİK NEXT (TASLAK)
+            window.checkGenderAndNext = function() {
+                // Bu kısım sitenin içindeki 'Next' butonuna ve video elementine ulaşır
+                var remoteVideo = document.querySelector('video'); // Karşı tarafın videosu
+                var nextBtn = document.querySelector('.next-button'); // Sitenin kendi next butonu class'ını buraya yazmalısın
+                
+                // Burada basit bir piksel/yüz taraması mantığı (İleride gelişecek)
+                // Şimdilik sadece tetikleyiciyi kuruyoruz
             };
         })();
         """
@@ -44,34 +62,28 @@ class ViewController: UIViewController {
         config.userContentController.addUserScript(WKUserScript(source: hookJS, injectionTime: .atDocumentStart, forMainFrameOnly: false))
         config.allowsInlineMediaPlayback = true
 
-        // Umingle - Ana Ekran
         webView = WKWebView(frame: .zero, configuration: config)
         webView.customUserAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36"
         webView.translatesAutoresizingMaskIntoConstraints = false
         webView.uiDelegate = self
         view.addSubview(webView)
 
-        // Prezi - Kaynak Ekran
         preziView = WKWebView(frame: .zero)
         preziView.translatesAutoresizingMaskIntoConstraints = false
         preziView.layer.borderColor = UIColor.green.cgColor
         preziView.layer.borderWidth = 2
-        preziView.isUserInteractionEnabled = true 
         view.addSubview(preziView)
 
         preziTrailingConstraint = preziView.rightAnchor.constraint(equalTo: view.rightAnchor, constant: -10)
-        
         NSLayoutConstraint.activate([
             webView.topAnchor.constraint(equalTo: view.topAnchor),
             webView.bottomAnchor.constraint(equalTo: view.bottomAnchor),
             webView.leftAnchor.constraint(equalTo: view.leftAnchor),
             webView.rightAnchor.constraint(equalTo: view.rightAnchor),
-            
             preziView.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 10),
             preziTrailingConstraint,
-            // Daha rahat manüel kontrol için ideal boyut
-            preziView.widthAnchor.constraint(equalToConstant: 350), 
-            preziView.heightAnchor.constraint(equalToConstant: 200)
+            preziView.widthAnchor.constraint(equalToConstant: 300),
+            preziView.heightAnchor.constraint(equalToConstant: 170)
         ])
 
         webView.load(URLRequest(url: URL(string: "https://umingle.com")!))
@@ -79,44 +91,80 @@ class ViewController: UIViewController {
     }
 
     func setupControls() {
-        let bT = UIButton(type: .system)
-        bT.translatesAutoresizingMaskIntoConstraints = false
-        bT.setTitle(" PANELİ GİZLE / AÇ ", for: .normal)
-        bT.titleLabel?.font = .boldSystemFont(ofSize: 16)
-        bT.backgroundColor = .systemRed // Dikkat çekici olması için kırmızı
-        bT.setTitleColor(.white, for: .normal)
-        bT.layer.cornerRadius = 20
-        bT.addTarget(self, action: #selector(togglePanel), for: .touchUpInside)
+        let stack = UIStackView()
+        stack.axis = .horizontal; stack.spacing = 10; stack.translatesAutoresizingMaskIntoConstraints = false
         
-        view.addSubview(bT)
+        let btnToggle = createBtn(title: " PANELİ GİZLE / SAHTE RESİM ", action: #selector(togglePanel))
+        let btnRecord = createBtn(title: " 🔴 KAYDI BAŞLAT ", action: #selector(toggleRecord))
+        
+        stack.addArrangedSubview(btnToggle)
+        stack.addArrangedSubview(btnRecord)
+        view.addSubview(stack)
         
         NSLayoutConstraint.activate([
-            bT.centerXAnchor.constraint(equalTo: view.centerXAnchor),
-            bT.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor, constant: -20),
-            bT.widthAnchor.constraint(equalToConstant: 200),
-            bT.heightAnchor.constraint(equalToConstant: 50)
+            stack.centerXAnchor.constraint(equalTo: view.centerXAnchor),
+            stack.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor, constant: -20),
+            stack.heightAnchor.constraint(equalToConstant: 50)
         ])
+    }
+
+    func createBtn(title: String, action: Selector) -> UIButton {
+        let b = UIButton(type: .system)
+        b.setTitle(title, for: .normal)
+        b.backgroundColor = .systemBlue; b.setTitleColor(.white, for: .normal); b.layer.cornerRadius = 10
+        b.addTarget(self, action: action, for: .touchUpInside)
+        return b
     }
 
     @objc func togglePanel() {
         isPanelVisible.toggle()
-        // Paneli ekranın çok dışına itiyoruz (Snapshot durmasın diye)
         preziTrailingConstraint.constant = isPanelVisible ? -10 : 3000
-        UIView.animate(withDuration: 0.5, delay: 0, options: .curveEaseInOut, animations: {
-            self.view.layoutIfNeeded()
-        }, completion: nil)
+        UIView.animate(withDuration: 0.3) { self.view.layoutIfNeeded() }
     }
 
-    @objc func syncFrames() {
-        // Snapshot alırken hata kontrolü ekledik
-        preziView.takeSnapshot(with: nil) { img, error in
-            if let i = img, error == nil {
-                if let d = i.jpegData(compressionQuality: 0.6) {
-                    let base64 = d.base64EncodedString()
-                    self.webView.evaluateJavaScript("if(window.drawToFakeCamera){window.drawToFakeCamera('\(base64)');}")
+    @objc func toggleRecord() {
+        if !isRecording {
+            startRecording()
+        } else {
+            stopRecording()
+        }
+    }
+
+    // --- ANA DÖNGÜ (Kamera Aktarımı) ---
+    @objc func mainLoop() {
+        if isPanelVisible {
+            // PANEL AÇIK: Prezi'den görüntü al
+            preziView.takeSnapshot(with: nil) { img, _ in
+                if let i = img, let d = i.jpegData(compressionQuality: 0.5) {
+                    self.webView.evaluateJavaScript("window.drawToFakeCamera('\(d.base64EncodedString())');")
                 }
             }
+        } else {
+            // PANEL GİZLİ: Repodaki fotoğrafı gönder
+            if let image = UIImage(named: "sahte_insan.jpg"), let d = image.jpegData(compressionQuality: 0.5) {
+                self.webView.evaluateJavaScript("window.drawToFakeCamera('\(d.base64EncodedString())');")
+            }
         }
+        
+        // Kayıt yapılıyorsa frame ekle
+        if isRecording { captureRemoteVideoForRecord() }
+    }
+
+    // --- GİZLİ KAYIT SİSTEMİ (Taslak) ---
+    func startRecording() {
+        // iPad Dosyalar klasöründe kayıt yeri oluşturma ve MP4 başlatma
+        isRecording = true
+        print("Kayıt başladı...")
+    }
+
+    func stopRecording() {
+        isRecording = false
+        print("Kayıt durduruldu ve kaydedildi.")
+    }
+
+    func captureRemoteVideoForRecord() {
+        // Bu fonksiyon webView içindeki karşı tarafın videosunu 
+        // ekrana bakmadan (arkadan) yakalayıp MP4'e yazar.
     }
 }
 
