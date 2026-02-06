@@ -7,13 +7,20 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
     func scene(_ scene: UIScene, willConnectTo session: UISceneSession, options connectionOptions: UIScene.ConnectionOptions) {
         guard let windowScene = (scene as? UIWindowScene) else { return }
 
-        // 🔴 EKRANI YATAYA ZORLA (iOS 16 ve Üzeri İçin)
+        // 🔴 EKRANI YATAYA ZORLAYAN EN SAĞLAM YÖNTEM
+        let window = UIWindow(windowScene: windowScene)
+        
+        // ViewController'ı ana ekran yapıyoruz
+        let vc = ViewController()
+        window.rootViewController = vc
+        self.window = window
+        window.makeKeyAndVisible()
+        
+        // iOS 16 ve sonrası için alternatif zorlama
         if #available(iOS 16.0, *) {
-            let windowScene = scene as? UIWindowScene
-            let geometryUpdate = UIWindowScene.GeometryConstraints.iOS(interfaceOrientations: .landscape)
-            windowScene?.requestGeometryUpdate(geometryUpdate) { error in
-                print("Hata: \(error.localizedDescription)")
-            }
+            windowScene.requestGeometryUpdate(.iOS(interfaceOrientations: .landscape))
+        } else {
+            UIDevice.current.setValue(UIInterfaceOrientation.landscapeLeft.rawValue, forKey: "orientation")
         }
     }
 
