@@ -6,6 +6,7 @@ class ViewController: UIViewController {
     private var preziView: WKWebView!
     private var timer: Timer?
     private var isPanelVisible = true
+    private var preziTrailingConstraint: NSLayoutConstraint!
 
     override var supportedInterfaceOrientations: UIInterfaceOrientationMask { .landscape }
     override var shouldAutorotate: Bool { false }
@@ -16,7 +17,8 @@ class ViewController: UIViewController {
         setupWebViews()
         setupControls()
         
-        timer = Timer.scheduledTimer(timeInterval: 0.05, target: self, selector: #selector(syncFrames), userInfo: nil, repeats: true)
+        // Snapshot zamanlaması (0.1 saniye stabilite için idealdir)
+        timer = Timer.scheduledTimer(timeInterval: 0.1, target: self, selector: #selector(syncFrames), userInfo: nil, repeats: true)
     }
 
     func setupWebViews() {
@@ -25,8 +27,6 @@ class ViewController: UIViewController {
             var canvas = document.createElement('canvas');
             canvas.width = 1280; canvas.height = 720;
             var ctx = canvas.getContext('2d');
-            ctx.fillStyle = "black";
-            ctx.fillRect(0,0,1280,720);
 
             window.drawToFakeCamera = function(b64) {
                 var img = new Image();
@@ -57,9 +57,9 @@ class ViewController: UIViewController {
         preziView.translatesAutoresizingMaskIntoConstraints = false
         preziView.layer.borderColor = UIColor.green.cgColor
         preziView.layer.borderWidth = 2
-        // Krtik: İlk başta etkileşimi engellememesi için ayar
-        preziView.isUserInteractionEnabled = true 
         view.addSubview(preziView)
+
+        preziTrailingConstraint = preziView.rightAnchor.constraint(equalTo: view.rightAnchor, constant: -10)
 
         NSLayoutConstraint.activate([
             webView.topAnchor.constraint(equalTo: view.topAnchor),
@@ -68,7 +68,7 @@ class ViewController: UIViewController {
             webView.rightAnchor.constraint(equalTo: view.rightAnchor),
             
             preziView.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 10),
-            preziView.rightAnchor.constraint(equalTo: view.rightAnchor, constant: -10),
+            preziTrailingConstraint,
             preziView.widthAnchor.constraint(equalToConstant: 240),
             preziView.heightAnchor.constraint(equalToConstant: 135)
         ])
@@ -81,10 +81,10 @@ class ViewController: UIViewController {
         let stack = UIStackView()
         stack.axis = .horizontal; stack.spacing = 10; stack.translatesAutoresizingMaskIntoConstraints = false
         
-        let bP = createBtn(title: " ⬅️ ", action: #selector(goP))
-        let bF = createBtn(title: " TAM EKRAN ", action: #selector(goFull))
-        let bN = createBtn(title: " ➡️ ", action: #selector(goN))
-        let bT = createBtn(title: " PANELİ GİZLE ", action: #selector(togglePanel))
+        let bP = createBtn(title: " ⬅️ PC SOL ", action: #selector(goP))
+        let bF = createBtn(title: " TAM EKRAN YAP ", action: #selector(goFull))
+        let bN = createBtn(title: " ➡️ PC SAĞ ", action: #selector(goN))
+        let bT = createBtn(title: " PANELİ GİZLE/AÇ ", action: #selector(togglePanel))
         
         [bP, bF, bN, bT].forEach { stack.addArrangedSubview($0) }
         view.addSubview(stack)
@@ -99,7 +99,7 @@ class ViewController: UIViewController {
     func createBtn(title: String, action: Selector) -> UIButton {
         let b = UIButton(type: .system)
         b.setTitle(title, for: .normal)
-        b.backgroundColor = .black.withAlphaComponent(0.8)
+        b.backgroundColor = .black.withAlphaComponent(0.85)
         b.setTitleColor(.white, for: .normal)
         b.layer.cornerRadius = 10
         b.addTarget(self, action: action, for: .touchUpInside)
@@ -108,34 +108,60 @@ class ViewController: UIViewController {
 
     @objc func togglePanel() {
         isPanelVisible.toggle()
-        // Kendi kamerandan gitmemesi için gizlemiyoruz, ŞEFFAFLAŞTIRIYORUZ.
-        preziView.alpha = isPanelVisible ? 1.0 : 0.01 
-        if let stack = view.subviews.last as? UIStackView, let btn = stack.arrangedSubviews.last as? UIButton {
-            btn.setTitle(isPanelVisible ? " PANELİ GİZLE " : " PANELİ AÇ ", for: .normal)
-        }
+        // Ekran dışına iterek gizleme (Kamera görüntüsü kesilmez)
+        preziTrailingConstraint.constant = isPanelVisible ? -10 : 2000
+        UIView.animate(withDuration: 0.4) { self.view.layoutIfNeeded() }
     }
 
-    // --- KLAVYE SİMÜLASYONU (Daha Garantidir) ---
+    // --- TAM EKRAN VE PC KLAVYE KONTROLLERİ ---
+    
     @objc func goFull() {
-        // Tam ekran butonu için verdiğin klası kullanıyoruz
-        preziView.evaluateJavaScript("document.querySelector('.webgl-viewer-navbar-button-fullscreen')?.click();")
-    }
-
-    @objc func goP() {
-        let js = "window.dispatchEvent(new KeyboardEvent('keydown', {'keyCode': 37, 'which': 37}));"
+        // Prezi'nin WebGL butonuna bas ve odağı oraya ver
+        let js = """
+        (function() {
+            var fullBtn = document.querySelector('.webgl-viewer-navbar-button-fullscreen');
+            if(fullBtn) fullBtn.click();
+            window.focus();
+        })();
+        """
         preziView.evaluateJavaScript(js)
     }
 
+    @objc func goP() {
+        // Sol Ok (Keycode 37)
+        sendKeyEvent(code: 37)
+    }
+
     @objc func goN() {
-        let js = "window.dispatchEvent(new KeyboardEvent('keydown', {'keyCode': 39, 'which': 39}));"
+        // Sağ Ok (Keycode 39)
+        sendKeyEvent(code: 39)
+    }
+
+    private func sendKeyEvent(code: Int) {
+        let js = """
+        (function() {
+            window.focus();
+            document.body.focus();
+            var event = new KeyboardEvent('keydown', {
+                view: window,
+                bubbles: true,
+                cancelable: true,
+                keyCode: \(code),
+                which: \(code)
+            });
+            document.dispatchEvent(event);
+            // WebGL katmanına da özel sinyal gönder
+            var webgl = document.querySelector('canvas') || document.body;
+            webgl.dispatchEvent(event);
+        })();
+        """
         preziView.evaluateJavaScript(js)
     }
 
     @objc func syncFrames() {
-        // Alpha 0.01 olduğu için hala snapshot alabilir
         preziView.takeSnapshot(with: nil) { img, _ in
-            guard let i = img, let d = i.jpegData(compressionQuality: 0.5) else { return }
-            self.webView.evaluateJavaScript("window.drawToFakeCamera('\(d.base64EncodedString())');")
+            guard let i = img, let d = i.jpegData(compressionQuality: 0.4) else { return }
+            self.webView.evaluateJavaScript("if(window.drawToFakeCamera) { window.drawToFakeCamera('\(d.base64EncodedString())'); }")
         }
     }
 }
