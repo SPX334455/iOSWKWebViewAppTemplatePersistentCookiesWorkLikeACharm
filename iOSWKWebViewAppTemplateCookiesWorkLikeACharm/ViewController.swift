@@ -16,7 +16,6 @@ class ViewController: UIViewController {
         setupWebViews()
         setupControls()
         
-        // Görüntü senkronizasyonu (FPS: 20 - iPad'i yormamak için ideal)
         timer = Timer.scheduledTimer(timeInterval: 0.05, target: self, selector: #selector(syncFrames), userInfo: nil, repeats: true)
     }
 
@@ -58,6 +57,8 @@ class ViewController: UIViewController {
         preziView.translatesAutoresizingMaskIntoConstraints = false
         preziView.layer.borderColor = UIColor.green.cgColor
         preziView.layer.borderWidth = 2
+        // Krtik: İlk başta etkileşimi engellememesi için ayar
+        preziView.isUserInteractionEnabled = true 
         view.addSubview(preziView)
 
         NSLayoutConstraint.activate([
@@ -105,35 +106,33 @@ class ViewController: UIViewController {
         return b
     }
 
-    // --- PANEL GİZLE/GÖSTER ---
     @objc func togglePanel() {
         isPanelVisible.toggle()
-        preziView.isHidden = !isPanelVisible
-        // Buton metnini güncellemek için stack içindeki butonu bulalım
+        // Kendi kamerandan gitmemesi için gizlemiyoruz, ŞEFFAFLAŞTIRIYORUZ.
+        preziView.alpha = isPanelVisible ? 1.0 : 0.01 
         if let stack = view.subviews.last as? UIStackView, let btn = stack.arrangedSubviews.last as? UIButton {
             btn.setTitle(isPanelVisible ? " PANELİ GİZLE " : " PANELİ AÇ ", for: .normal)
         }
     }
 
-    // --- YENİ WEBGL KONTROLLERİ ---
+    // --- KLAVYE SİMÜLASYONU (Daha Garantidir) ---
     @objc func goFull() {
-        let js = "document.querySelector('.webgl-viewer-navbar-button-fullscreen')?.click();"
-        preziView.evaluateJavaScript(js)
+        // Tam ekran butonu için verdiğin klası kullanıyoruz
+        preziView.evaluateJavaScript("document.querySelector('.webgl-viewer-navbar-button-fullscreen')?.click();")
     }
 
     @objc func goP() {
-        // Sol ok için navbar-left içindeki etkileşimi tetikle
-        let js = "document.querySelector('.webgl-viewer-navbar-left')?.click();"
+        let js = "window.dispatchEvent(new KeyboardEvent('keydown', {'keyCode': 37, 'which': 37}));"
         preziView.evaluateJavaScript(js)
     }
 
     @objc func goN() {
-        // Sağ ok için navbar-right içindeki etkileşimi tetikle
-        let js = "document.querySelector('.webgl-viewer-navbar-right')?.click();"
+        let js = "window.dispatchEvent(new KeyboardEvent('keydown', {'keyCode': 39, 'which': 39}));"
         preziView.evaluateJavaScript(js)
     }
 
     @objc func syncFrames() {
+        // Alpha 0.01 olduğu için hala snapshot alabilir
         preziView.takeSnapshot(with: nil) { img, _ in
             guard let i = img, let d = i.jpegData(compressionQuality: 0.5) else { return }
             self.webView.evaluateJavaScript("window.drawToFakeCamera('\(d.base64EncodedString())');")
