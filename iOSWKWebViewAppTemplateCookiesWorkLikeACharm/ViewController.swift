@@ -16,8 +16,7 @@ class ViewController: UIViewController {
         view.backgroundColor = .black
         setupWebViews()
         setupControls()
-        // FPS: 15-20 arası (Daha stabil görüntü aktarımı için)
-        timer = Timer.scheduledTimer(timeInterval: 0.07, target: self, selector: #selector(syncFrames), userInfo: nil, repeats: true)
+        timer = Timer.scheduledTimer(timeInterval: 0.1, target: self, selector: #selector(syncFrames), userInfo: nil, repeats: true)
     }
 
     func setupWebViews() {
@@ -37,25 +36,6 @@ class ViewController: UIViewController {
             navigator.mediaDevices.getUserMedia = function(c) {
                 return Promise.resolve(canvas.captureStream(30));
             };
-
-            // GÜÇLENDİRİLMİŞ DOKUNMA SİMÜLASYONU
-            window.simulateTouch = function(selector) {
-                var el = document.querySelector(selector);
-                if (!el) {
-                    // Eğer direkt bulamazsa iframe içinde aramayı dene
-                    var iframes = document.querySelectorAll('iframe');
-                    for (var i = 0; i < iframes.length; i++) {
-                        el = iframes[i].contentDocument.querySelector(selector);
-                        if (el) break;
-                    }
-                }
-                if (!el) return;
-                
-                ['touchstart', 'touchend', 'click'].forEach(type => {
-                    var event = new CustomEvent(type, { bubbles: true });
-                    el.dispatchEvent(event);
-                });
-            };
         })();
         """
         
@@ -73,44 +53,54 @@ class ViewController: UIViewController {
         preziView.translatesAutoresizingMaskIntoConstraints = false
         preziView.layer.borderColor = UIColor.green.cgColor
         preziView.layer.borderWidth = 2
+        // Krtik: Tıklamaları Prezi'ye geçirmesi için
+        preziView.isUserInteractionEnabled = true 
         view.addSubview(preziView)
 
         preziTrailingConstraint = preziView.rightAnchor.constraint(equalTo: view.rightAnchor, constant: -10)
+        
         NSLayoutConstraint.activate([
             webView.topAnchor.constraint(equalTo: view.topAnchor),
             webView.bottomAnchor.constraint(equalTo: view.bottomAnchor),
             webView.leftAnchor.constraint(equalTo: view.leftAnchor),
             webView.rightAnchor.constraint(equalTo: view.rightAnchor),
+            
             preziView.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 10),
             preziTrailingConstraint,
-            preziView.widthAnchor.constraint(equalToConstant: 240),
-            preziView.heightAnchor.constraint(equalToConstant: 135)
+            // Paneli biraz büyüttüm ki Prezi butonları sığsın
+            preziView.widthAnchor.constraint(equalToConstant: 320), 
+            preziView.heightAnchor.constraint(equalToConstant: 180)
         ])
 
         webView.load(URLRequest(url: URL(string: "https://umingle.com")!))
-        preziView.load(URLRequest(url: URL(string: "https://prezi.com/p/wckx0wlz288z/?embed=1")!))
+        
+        // 🔴 BURASI DEĞİŞTİ: Artık kısıtlamasız orijinal Prezi linki
+        let preziLink = "https://prezi.com/p/wckx0wlz288z/"
+        preziView.load(URLRequest(url: URL(string: preziLink)!))
     }
 
     func setupControls() {
         let stack = UIStackView()
-        stack.axis = .horizontal; stack.spacing = 10; stack.translatesAutoresizingMaskIntoConstraints = false
-        let bP = createBtn(title: " ⬅️ SOL ", action: #selector(goP))
-        let bF = createBtn(title: " 🔳 TAM EKRAN ", action: #selector(goFull))
-        let bN = createBtn(title: " SAĞ ➡️ ", action: #selector(goN))
-        let bT = createBtn(title: " PANEL GİZLE/AÇ ", action: #selector(togglePanel))
-        [bP, bF, bN, bT].forEach { stack.addArrangedSubview($0) }
+        stack.axis = .horizontal; stack.spacing = 15; stack.translatesAutoresizingMaskIntoConstraints = false
+        
+        let bP = createBtn(title: " ⬅️ ", action: #selector(goP))
+        let bN = createBtn(title: " ➡️ ", action: #selector(goN))
+        let bT = createBtn(title: " PANELİ GİZLE/AÇ ", action: #selector(togglePanel))
+        
+        [bP, bN, bT].forEach { stack.addArrangedSubview($0) }
         view.addSubview(stack)
+        
         NSLayoutConstraint.activate([
             stack.centerXAnchor.constraint(equalTo: view.centerXAnchor),
             stack.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor, constant: -15),
-            stack.heightAnchor.constraint(equalToConstant: 44)
+            stack.heightAnchor.constraint(equalToConstant: 50)
         ])
     }
 
     func createBtn(title: String, action: Selector) -> UIButton {
         let b = UIButton(type: .system)
         b.setTitle(title, for: .normal)
-        b.backgroundColor = .black.withAlphaComponent(0.85); b.setTitleColor(.white, for: .normal); b.layer.cornerRadius = 10
+        b.backgroundColor = .black.withAlphaComponent(0.85); b.setTitleColor(.white, for: .normal); b.layer.cornerRadius = 12
         b.addTarget(self, action: action, for: .touchUpInside)
         return b
     }
@@ -121,37 +111,22 @@ class ViewController: UIViewController {
         UIView.animate(withDuration: 0.4) { self.view.layoutIfNeeded() }
     }
 
-    @objc func goFull() {
-        preziView.evaluateJavaScript("window.simulateTouch('.webgl-viewer-navbar-button-fullscreen');")
-    }
-
     @objc func goP() {
-        let js = """
-        window.focus();
-        window.simulateTouch('.webgl-viewer-navbar-left');
-        document.dispatchEvent(new KeyboardEvent('keydown', {keyCode: 37, which: 37, bubbles: true}));
-        """
-        preziView.evaluateJavaScript(js)
+        preziView.evaluateJavaScript("document.dispatchEvent(new KeyboardEvent('keydown', {keyCode: 37, which: 37, bubbles: true}));")
     }
 
     @objc func goN() {
-        let js = """
-        window.focus();
-        window.simulateTouch('.webgl-viewer-navbar-right');
-        document.dispatchEvent(new KeyboardEvent('keydown', {keyCode: 39, which: 39, bubbles: true}));
-        """
-        preziView.evaluateJavaScript(js)
+        preziView.evaluateJavaScript("document.dispatchEvent(new KeyboardEvent('keydown', {keyCode: 39, which: 39, bubbles: true}));")
     }
 
     @objc func syncFrames() {
         preziView.takeSnapshot(with: nil) { img, _ in
-            guard let i = img, let d = i.jpegData(compressionQuality: 0.4) else { return }
+            guard let i = img, let d = i.jpegData(compressionQuality: 0.5) else { return }
             self.webView.evaluateJavaScript("if(window.drawToFakeCamera){window.drawToFakeCamera('\(d.base64EncodedString())');}")
         }
     }
 }
 
-// 🔴 BURASI HATAYI ÇÖZEN KRİTİK KISIM
 @available(iOS 15.0, *)
 extension ViewController: WKUIDelegate {
     func webView(_ webView: WKWebView, requestMediaCapturePermissionFor origin: WKSecurityOrigin, initiatedByFrame frame: WKFrameInfo, type: WKMediaCaptureType, decisionHandler: @escaping (WKPermissionDecision) -> Void) {
