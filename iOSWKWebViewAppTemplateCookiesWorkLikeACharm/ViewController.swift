@@ -16,7 +16,8 @@ class ViewController: UIViewController {
         view.backgroundColor = .black
         setupWebViews()
         setupControls()
-        timer = Timer.scheduledTimer(timeInterval: 0.1, target: self, selector: #selector(syncFrames), userInfo: nil, repeats: true)
+        // FPS: 15-20 arası (Daha stabil görüntü aktarımı için)
+        timer = Timer.scheduledTimer(timeInterval: 0.07, target: self, selector: #selector(syncFrames), userInfo: nil, repeats: true)
     }
 
     func setupWebViews() {
@@ -37,15 +38,23 @@ class ViewController: UIViewController {
                 return Promise.resolve(canvas.captureStream(30));
             };
 
-            // DOKUNMA SİMÜLASYONU FONKSİYONU
+            // GÜÇLENDİRİLMİŞ DOKUNMA SİMÜLASYONU
             window.simulateTouch = function(selector) {
                 var el = document.querySelector(selector);
+                if (!el) {
+                    // Eğer direkt bulamazsa iframe içinde aramayı dene
+                    var iframes = document.querySelectorAll('iframe');
+                    for (var i = 0; i < iframes.length; i++) {
+                        el = iframes[i].contentDocument.querySelector(selector);
+                        if (el) break;
+                    }
+                }
                 if (!el) return;
-                ['touchstart', 'touchend'].forEach(type => {
-                    var t = new Touch({identifier: Date.now(), target: el, clientX: 0, clientY: 0});
-                    el.dispatchEvent(new TouchEvent(type, {touches: [t], targetTouches: [t], changedTouches: [t], bubbles: true}));
+                
+                ['touchstart', 'touchend', 'click'].forEach(type => {
+                    var event = new CustomEvent(type, { bubbles: true });
+                    el.dispatchEvent(event);
                 });
-                el.click(); // Yedek olarak click de gönder
             };
         })();
         """
@@ -112,13 +121,11 @@ class ViewController: UIViewController {
         UIView.animate(withDuration: 0.4) { self.view.layoutIfNeeded() }
     }
 
-    // --- NOKTA ATIŞI KOMUTLAR ---
     @objc func goFull() {
         preziView.evaluateJavaScript("window.simulateTouch('.webgl-viewer-navbar-button-fullscreen');")
     }
 
     @objc func goP() {
-        // Ok tuşunu hem dokunma hem klavye olarak zorla
         let js = """
         window.focus();
         window.simulateTouch('.webgl-viewer-navbar-left');
@@ -144,6 +151,8 @@ class ViewController: UIViewController {
     }
 }
 
+// 🔴 BURASI HATAYI ÇÖZEN KRİTİK KISIM
+@available(iOS 15.0, *)
 extension ViewController: WKUIDelegate {
     func webView(_ webView: WKWebView, requestMediaCapturePermissionFor origin: WKSecurityOrigin, initiatedByFrame frame: WKFrameInfo, type: WKMediaCaptureType, decisionHandler: @escaping (WKPermissionDecision) -> Void) {
         decisionHandler(.grant)
