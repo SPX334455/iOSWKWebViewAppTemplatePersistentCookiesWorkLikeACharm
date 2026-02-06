@@ -20,6 +20,23 @@ class ViewController: UIViewController {
     }
 
     func setupWebViews() {
+        // --- BU SCRIPT PREZI'YI KONTROL ETMEK İÇİN ENJEKTE EDİLECEK ---
+        let controlJS = """
+        window.pressKey = function(k) {
+            var e = new KeyboardEvent('keydown', {
+                keyCode: k, which: k, bubbles: true, cancelable: true, view: window
+            });
+            document.dispatchEvent(e);
+            document.body.dispatchEvent(e);
+            // WebGL Canvas'a direkt odaklan ve gönder
+            var canvas = document.querySelector('canvas');
+            if(canvas) {
+                canvas.focus();
+                canvas.dispatchEvent(e);
+            }
+        };
+        """
+
         let hookJS = """
         (function() {
             var canvas = document.createElement('canvas');
@@ -40,7 +57,9 @@ class ViewController: UIViewController {
         """
         
         let config = WKWebViewConfiguration()
+        // Her iki scripti de ekliyoruz
         config.userContentController.addUserScript(WKUserScript(source: hookJS, injectionTime: .atDocumentStart, forMainFrameOnly: false))
+        config.userContentController.addUserScript(WKUserScript(source: controlJS, injectionTime: .atDocumentEnd, forMainFrameOnly: false))
         config.allowsInlineMediaPlayback = true
 
         webView = WKWebView(frame: .zero, configuration: config)
@@ -49,11 +68,10 @@ class ViewController: UIViewController {
         webView.uiDelegate = self
         view.addSubview(webView)
 
-        preziView = WKWebView(frame: .zero)
+        preziView = WKWebView(frame: .zero, configuration: config)
         preziView.translatesAutoresizingMaskIntoConstraints = false
         preziView.layer.borderColor = UIColor.green.cgColor
         preziView.layer.borderWidth = 2
-        // Krtik: Tıklamaları Prezi'ye geçirmesi için
         preziView.isUserInteractionEnabled = true 
         view.addSubview(preziView)
 
@@ -67,56 +85,55 @@ class ViewController: UIViewController {
             
             preziView.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 10),
             preziTrailingConstraint,
-            // Paneli biraz büyüttüm ki Prezi butonları sığsın
-            preziView.widthAnchor.constraint(equalToConstant: 320), 
-            preziView.heightAnchor.constraint(equalToConstant: 180)
+            preziView.widthAnchor.constraint(equalToConstant: 350), 
+            preziView.heightAnchor.constraint(equalToConstant: 200)
         ])
 
         webView.load(URLRequest(url: URL(string: "https://umingle.com")!))
-        
-        // 🔴 BURASI DEĞİŞTİ: Artık kısıtlamasız orijinal Prezi linki
-        let preziLink = "https://prezi.com/p/wckx0wlz288z/"
-        preziView.load(URLRequest(url: URL(string: preziLink)!))
+        preziView.load(URLRequest(url: URL(string: "https://prezi.com/p/wckx0wlz288z/")!))
     }
 
     func setupControls() {
         let stack = UIStackView()
-        stack.axis = .horizontal; stack.spacing = 15; stack.translatesAutoresizingMaskIntoConstraints = false
+        stack.axis = .horizontal; stack.spacing = 20; stack.translatesAutoresizingMaskIntoConstraints = false
         
-        let bP = createBtn(title: " ⬅️ ", action: #selector(goP))
-        let bN = createBtn(title: " ➡️ ", action: #selector(goN))
-        let bT = createBtn(title: " PANELİ GİZLE/AÇ ", action: #selector(togglePanel))
+        let bP = createBtn(title: "  ⬅️ GERİ  ", action: #selector(goP))
+        let bN = createBtn(title: "  İLERİ ➡️  ", action: #selector(goN))
+        let bT = createBtn(title: "  PANEL GİZLE  ", action: #selector(togglePanel))
         
         [bP, bN, bT].forEach { stack.addArrangedSubview($0) }
         view.addSubview(stack)
         
         NSLayoutConstraint.activate([
             stack.centerXAnchor.constraint(equalTo: view.centerXAnchor),
-            stack.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor, constant: -15),
-            stack.heightAnchor.constraint(equalToConstant: 50)
+            stack.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor, constant: -20),
+            stack.heightAnchor.constraint(equalToConstant: 55)
         ])
     }
 
     func createBtn(title: String, action: Selector) -> UIButton {
         let b = UIButton(type: .system)
         b.setTitle(title, for: .normal)
-        b.backgroundColor = .black.withAlphaComponent(0.85); b.setTitleColor(.white, for: .normal); b.layer.cornerRadius = 12
+        b.titleLabel?.font = .boldSystemFont(ofSize: 18)
+        b.backgroundColor = .systemBlue; b.setTitleColor(.white, for: .normal); b.layer.cornerRadius = 15
         b.addTarget(self, action: action, for: .touchUpInside)
         return b
     }
 
     @objc func togglePanel() {
         isPanelVisible.toggle()
-        preziTrailingConstraint.constant = isPanelVisible ? -10 : 2500
+        preziTrailingConstraint.constant = isPanelVisible ? -10 : 3000
         UIView.animate(withDuration: 0.4) { self.view.layoutIfNeeded() }
     }
 
     @objc func goP() {
-        preziView.evaluateJavaScript("document.dispatchEvent(new KeyboardEvent('keydown', {keyCode: 37, which: 37, bubbles: true}));")
+        // Prezi'yi öne çıkar ve 37 (Sol Ok) tuşunu bas
+        preziView.evaluateJavaScript("window.focus(); window.pressKey(37);")
     }
 
     @objc func goN() {
-        preziView.evaluateJavaScript("document.dispatchEvent(new KeyboardEvent('keydown', {keyCode: 39, which: 39, bubbles: true}));")
+        // Prezi'yi öne çıkar ve 39 (Sağ Ok) tuşunu bas
+        preziView.evaluateJavaScript("window.focus(); window.pressKey(39);")
     }
 
     @objc func syncFrames() {
